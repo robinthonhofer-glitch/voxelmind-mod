@@ -1,0 +1,49 @@
+plugins {
+    id "fabric-loom" version "1.9.2"
+    id "java"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Fabric
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // UPnP — WaifUPnP source included directly (LGPL, com.dosse.upnp)
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = Integer.parseInt(project.java_version)
+}
+
+java {
+    sourceCompatibility = JavaVersion.toVersion(project.java_version)
+    targetCompatibility = JavaVersion.toVersion(project.java_version)
+    withSourcesJar()
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+}

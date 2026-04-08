@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "com.voxelmind.mod.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "IntegratedServerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

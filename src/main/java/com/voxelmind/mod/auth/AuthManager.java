@@ -54,6 +54,9 @@ public class AuthManager {
             ModConfig.setTokens(accessToken, refreshToken);
             state = State.LOGGED_IN;
             VoxelMindMod.LOGGER.info("Login successful!");
+            // Silently push the current MC username to the Brain so the server side
+            // (Whisper detection, Follow-Player, etc.) knows who owns this account.
+            syncMcUsernameSilent();
         }, error -> {
             state = State.ERROR;
             errorMessage = error;
@@ -65,7 +68,8 @@ public class AuthManager {
         // Open browser to VoxelMind login page
         String loginUrl = "https://voxel-mind.com/auth/mod-login?callback=http://localhost:9876/callback";
         try {
-            java.awt.Desktop.getDesktop().browse(URI.create(loginUrl));
+            net.minecraft.util.Util.getOperatingSystem().open(URI.create(loginUrl));
+            VoxelMindMod.LOGGER.info("Opened browser: {}", loginUrl);
         } catch (Exception e) {
             VoxelMindMod.LOGGER.error("Failed to open browser: {}", e.getMessage());
             state = State.ERROR;
@@ -120,6 +124,28 @@ public class AuthManager {
                     VoxelMindMod.LOGGER.warn("Token refresh error: {}", e.getMessage());
                     return false;
                 });
+    }
+
+    /**
+     * Fire-and-forget: tell the Brain our current Minecraft session username so the
+     * server can populate profiles.mc_username. The user should never have to set
+     * this manually — the mod already knows it.
+     */
+    public void syncMcUsernameSilent() {
+        try {
+            net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+            if (mc == null || mc.getSession() == null) return;
+            String name = mc.getSession().getUsername();
+            if (name == null || name.isEmpty()) return;
+            com.voxelmind.mod.api.BrainApiClient.get().updateMcUsername(name)
+                    .exceptionally(e -> {
+                        VoxelMindMod.LOGGER.debug("Silent mc_username sync failed: {}",
+                                e.getMessage());
+                        return null;
+                    });
+        } catch (Exception e) {
+            VoxelMindMod.LOGGER.debug("syncMcUsernameSilent skipped: {}", e.getMessage());
+        }
     }
 
     public void cancelLogin() {

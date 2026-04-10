@@ -7,6 +7,7 @@ import com.voxelmind.mod.api.dto.AgentStatus;
 import com.voxelmind.mod.api.dto.ApiError;
 import com.voxelmind.mod.api.dto.BotInfo;
 import com.voxelmind.mod.api.dto.BotState;
+import com.voxelmind.mod.api.dto.ProfileInfo;
 import com.voxelmind.mod.auth.AuthManager;
 import com.voxelmind.mod.config.ModConfig;
 
@@ -87,6 +88,27 @@ public class BrainApiClient {
     public CompletableFuture<AgentStatus> getAgentStatus() {
         return sendAsync("GET", "/agent-status", null)
                 .thenApply(body -> GSON.fromJson(body, AgentStatus.class));
+    }
+
+    // ─── Profile / Feedback ───
+
+    public CompletableFuture<ProfileInfo> getProfile() {
+        return sendAsync("GET", "/profile", null)
+                .thenApply(body -> GSON.fromJson(body, ProfileInfo.class));
+    }
+
+    public CompletableFuture<Void> updateMcUsername(String mcUsername) {
+        var payload = Map.of("mc_username", mcUsername);
+        return sendAsync("PATCH", "/profile", GSON.toJson(payload))
+                .thenApply(body -> null);
+    }
+
+    public CompletableFuture<Void> sendFeedback(String text, String botId) {
+        var map = new java.util.HashMap<String, String>();
+        map.put("text", text);
+        if (botId != null && !botId.isEmpty()) map.put("bot_id", botId);
+        return sendAsync("POST", "/feedback", GSON.toJson(map))
+                .thenApply(body -> null);
     }
 
     public CompletableFuture<Boolean> healthCheck() {

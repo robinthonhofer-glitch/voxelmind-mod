@@ -2,6 +2,7 @@ package com.voxelmind.mod.lan;
 
 import com.voxelmind.mod.VoxelMindMod;
 import com.voxelmind.mod.config.ModConfig;
+import com.voxelmind.mod.tunnel.TunnelManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.world.GameMode;
 
@@ -21,7 +22,7 @@ public class LanManager {
 
     /**
      * Returns the address that the Brain should use to connect to this server.
-     * For singleplayer: public IP (UPnP) or LAN IP + port
+     * For singleplayer: relay address (via tunnel)
      * For multiplayer: the server address from ServerInfo
      */
     public String getServerAddress() {
@@ -62,26 +63,14 @@ public class LanManager {
 
     /**
      * Called by Mixin when LAN is actually opened — sets state.
+     * No more UPnP — tunnel handles connectivity.
      */
     public void onLanOpened(int port) {
         this.activePort = port;
         this.lanOpen = true;
-
-        // Try UPnP if configured
-        if (ModConfig.isAutoUpnp()) {
-            UpnpManager.tryOpenPort(port);
-            String externalIp = UpnpManager.getExternalIP();
-            if (externalIp != null) {
-                this.serverAddress = externalIp + ":" + port;
-                VoxelMindMod.LOGGER.info("UPnP: External address = {}", serverAddress);
-            } else {
-                // Fallback: LAN IP
-                this.serverAddress = getLocalIp() + ":" + port;
-                VoxelMindMod.LOGGER.info("UPnP not available. LAN address = {}", serverAddress);
-            }
-        } else {
-            this.serverAddress = getLocalIp() + ":" + port;
-        }
+        // Server address is localhost — the tunnel will make it reachable
+        this.serverAddress = "localhost:" + port;
+        VoxelMindMod.LOGGER.info("LAN opened on port {} — tunnel will handle connectivity", port);
     }
 
     /**
@@ -90,7 +79,8 @@ public class LanManager {
     public void detectMultiplayerAddress() {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.getCurrentServerEntry() != null) {
-            this.serverAddress = client.getCurrentServerEntry().address;
+            String address = client.getCurrentServerEntry().address;
+            this.serverAddress = address;
             this.lanOpen = false;
             VoxelMindMod.LOGGER.info("Multiplayer server: {}", serverAddress);
         }
@@ -100,19 +90,10 @@ public class LanManager {
      * Cleanup on world leave.
      */
     public void onWorldLeave() {
-        if (lanOpen && activePort > 0) {
-            UpnpManager.closePort(activePort);
-        }
+        // Close all tunnels
+        TunnelManager.get().closeAll();
         lanOpen = false;
         activePort = 0;
         serverAddress = null;
-    }
-
-    private String getLocalIp() {
-        try {
-            return java.net.InetAddress.getLocalHost().getHostAddress();
-        } catch (Exception e) {
-            return "localhost";
-        }
     }
 }

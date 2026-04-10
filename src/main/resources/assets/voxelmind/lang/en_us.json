@@ -6,5 +6,6 @@
   "gui.voxelmind.login": "Login",
   "gui.voxelmind.logout": "Logout",
   "key.voxelmind.open_gui": "Open VoxelMind",
+  "key.voxelmind.toggle_dev": "Toggle Dev/Prod",
   "category.voxelmind": "VoxelMind"
 }

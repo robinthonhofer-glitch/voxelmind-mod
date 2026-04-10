@@ -20,20 +20,26 @@ public class ModConfig {
     private static ModConfig instance = new ModConfig();
 
     // Config fields
-    private String brainUrl = "https://brain-dev.voxel-mind.com";
+    // Default Brain URL points to prod since the CurseForge launch.
+    // Developers testing against dev brain can override via voxelmind.json
+    // ("brainUrl": "https://brain-dev.voxel-mind.com") — the config file
+    // takes precedence over this default once load() runs.
+    private String brainUrl = "https://brain.voxel-mind.com";
+    private String relayUrl = "wss://relay.voxel-mind.com";
     private String accessToken = "";
     private String refreshToken = "";
     private int lanPort = 25565;
     private boolean autoOpenLan = false;
-    private boolean autoUpnp = true;
+    private boolean autoTunnel = true;
 
     // Getters
     public static String getBrainUrl() { return instance.brainUrl; }
+    public static String getRelayUrl() { return instance.relayUrl; }
     public static String getAccessToken() { return instance.accessToken; }
     public static String getRefreshToken() { return instance.refreshToken; }
     public static int getLanPort() { return instance.lanPort; }
     public static boolean isAutoOpenLan() { return instance.autoOpenLan; }
-    public static boolean isAutoUpnp() { return instance.autoUpnp; }
+    public static boolean isAutoTunnel() { return instance.autoTunnel; }
 
     // Setters (auto-save)
     public static void setAccessToken(String token) {
@@ -67,8 +73,13 @@ public class ModConfig {
         save();
     }
 
-    public static void setAutoUpnp(boolean auto) {
-        instance.autoUpnp = auto;
+    public static void setRelayUrl(String url) {
+        instance.relayUrl = url;
+        save();
+    }
+
+    public static void setAutoTunnel(boolean auto) {
+        instance.autoTunnel = auto;
         save();
     }
 

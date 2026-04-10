@@ -7,12 +7,16 @@ import com.voxelmind.mod.auth.AuthManager;
 import com.voxelmind.mod.config.ModConfig;
 import com.voxelmind.mod.gui.VoxelMindScreen;
 import com.voxelmind.mod.lan.LanManager;
-import com.voxelmind.mod.lan.UpnpManager;
+import com.voxelmind.mod.tunnel.TunnelManager;
+import com.voxelmind.mod.tunnel.TunnelStatus;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Util;
+
+import java.net.URI;
 
 /**
  * Client-side /vm command tree.
@@ -96,6 +100,24 @@ public class VmCommand {
                         });
                         return 1;
                     }))
+                    // /vm recharge — open pricing page in browser
+                    .then(ClientCommandManager.literal("recharge").executes(ctx -> {
+                        openBrowser(ctx.getSource(), "https://voxel-mind.com/pricing");
+                        return 1;
+                    }))
+                    // /vm account — open account page in browser
+                    .then(ClientCommandManager.literal("account").executes(ctx -> {
+                        openBrowser(ctx.getSource(), "https://voxel-mind.com/account");
+                        return 1;
+                    }))
+                    // /vm feedback — open feedback screen
+                    .then(ClientCommandManager.literal("feedback").executes(ctx -> {
+                        if (!requireLogin(ctx.getSource())) return 0;
+                        MinecraftClient client = MinecraftClient.getInstance();
+                        client.execute(() -> client.setScreen(
+                                new com.voxelmind.mod.gui.FeedbackScreen(null, null)));
+                        return 1;
+                    }))
                     // /vm status
                     .then(ClientCommandManager.literal("status").executes(ctx -> {
                         LanManager lan = LanManager.get();
@@ -103,13 +125,23 @@ public class VmCommand {
                         msg(ctx.getSource(), "  Login: " + (ModConfig.isLoggedIn() ? "Yes" : "No"),
                                 ModConfig.isLoggedIn() ? Formatting.GREEN : Formatting.RED);
                         msg(ctx.getSource(), "  Brain: " + ModConfig.getBrainUrl(), Formatting.GRAY);
+                        msg(ctx.getSource(), "  Relay: " + ModConfig.getRelayUrl(), Formatting.GRAY);
                         msg(ctx.getSource(), "  LAN: " + (lan.isLanOpen()
                                 ? "Open (port " + lan.getActivePort() + ")"
                                 : "Closed"), Formatting.GRAY);
                         if (lan.getServerAddress() != null) {
                             msg(ctx.getSource(), "  Server: " + lan.getServerAddress(), Formatting.AQUA);
                         }
-                        msg(ctx.getSource(), "  UPnP: " + (UpnpManager.isAvailable() ? "Available" : "Not available"), Formatting.GRAY);
+
+                        // Tunnel status
+                        TunnelStatus tunnelStatus = TunnelManager.get().getOverallStatus();
+                        Formatting tunnelColor = switch (tunnelStatus) {
+                            case READY -> Formatting.GREEN;
+                            case CONNECTING, AUTHENTICATING -> Formatting.YELLOW;
+                            case ERROR -> Formatting.RED;
+                            default -> Formatting.GRAY;
+                        };
+                        msg(ctx.getSource(), "  Tunnel: " + tunnelStatus.name(), tunnelColor);
 
                         if (ModConfig.isLoggedIn()) {
                             BrainApiClient.get().getAgentStatus().thenAccept(status -> {
@@ -122,26 +154,6 @@ public class VmCommand {
                         }
                         return 1;
                     }))
-                    // /vm lan
-                    .then(ClientCommandManager.literal("lan").executes(ctx -> {
-                        LanManager lan = LanManager.get();
-                        if (lan.isLanOpen()) {
-                            msg(ctx.getSource(), "LAN already open on port " + lan.getActivePort(), Formatting.YELLOW);
-                        } else if (lan.isSingleplayer()) {
-                            boolean success = lan.openLan();
-                            if (success) {
-                                msg(ctx.getSource(), "LAN opened on port " + lan.getActivePort(), Formatting.GREEN);
-                                if (lan.getServerAddress() != null) {
-                                    msg(ctx.getSource(), "Server address: " + lan.getServerAddress(), Formatting.AQUA);
-                                }
-                            } else {
-                                msg(ctx.getSource(), "Failed to open LAN.", Formatting.RED);
-                            }
-                        } else {
-                            msg(ctx.getSource(), "LAN only available in singleplayer.", Formatting.RED);
-                        }
-                        return 1;
-                    }))
             );
         });
     }
@@ -150,58 +162,104 @@ public class VmCommand {
 
     private static void spawnByName(Object source, String name) {
         LanManager lan = LanManager.get();
-        String address = lan.getServerAddress();
 
-        if (address == null) {
-            if (lan.isSingleplayer() && !lan.isLanOpen()) {
-                msg(source, "Open LAN first: /vm lan", Formatting.RED);
-            } else {
-                msg(source, "Cannot detect server address.", Formatting.RED);
-            }
-            return;
-        }
-
-        BrainApiClient.get().listBots().thenAccept(bots -> {
-            BotInfo found = null;
-            for (BotInfo bot : bots) {
-                if (bot.bot_name.equalsIgnoreCase(name)) {
-                    found = bot;
-                    break;
+        if (lan.isSingleplayer()) {
+            // Singleplayer: ensure LAN open, then tunnel
+            if (!lan.isLanOpen()) {
+                msg(source, "Opening LAN...", Formatting.YELLOW);
+                boolean opened = lan.openLan();
+                if (!opened) {
+                    msg(source, "Failed to open LAN.", Formatting.RED);
+                    return;
                 }
             }
-            if (found == null) {
-                msg(source, "Bot '" + name + "' not found. Use /vm list.", Formatting.RED);
-                return;
-            }
-            final BotInfo target = found;
-            if (target.isOnline()) {
-                msg(source, target.bot_name + " is already online.", Formatting.YELLOW);
-                return;
-            }
 
-            // Parse host:port from address
-            String host;
-            int port;
-            if (address.contains(":")) {
-                String[] parts = address.split(":");
-                host = parts[0];
-                port = Integer.parseInt(parts[1]);
-            } else {
-                host = address;
-                port = 25565;
-            }
+            // Find the bot first, then open tunnel
+            BrainApiClient.get().listBots().thenAccept(bots -> {
+                BotInfo found = null;
+                for (BotInfo bot : bots) {
+                    if (bot.bot_name.equalsIgnoreCase(name)) {
+                        found = bot;
+                        break;
+                    }
+                }
+                if (found == null) {
+                    msg(source, "Bot '" + name + "' not found. Use /vm list.", Formatting.RED);
+                    return;
+                }
+                final BotInfo target = found;
+                if (target.isOnline()) {
+                    msg(source, target.bot_name + " is already online.", Formatting.YELLOW);
+                    return;
+                }
 
-            msg(source, "Spawning " + target.bot_name + " on " + address + "...", Formatting.YELLOW);
-            BrainApiClient.get().spawnBot(target.id, host, port).thenRun(() -> {
-                msg(source, target.bot_name + " is joining!", Formatting.GREEN);
+                msg(source, "Opening tunnel for " + target.bot_name + "...", Formatting.YELLOW);
+                int localPort = lan.getActivePort();
+                TunnelManager.get().openTunnel(target.id, localPort).thenAccept(tunnel -> {
+                    msg(source, "Spawning " + target.bot_name + " via tunnel...", Formatting.YELLOW);
+                    BrainApiClient.get().spawnBot(target.id, tunnel.getRelayHost(), tunnel.getTunnelPort()).thenRun(() -> {
+                        msg(source, target.bot_name + " is joining!", Formatting.GREEN);
+                    }).exceptionally(e -> {
+                        error(source, e);
+                        return null;
+                    });
+                }).exceptionally(e -> {
+                    msg(source, "Tunnel failed: " + (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()), Formatting.RED);
+                    return null;
+                });
             }).exceptionally(e -> {
                 error(source, e);
                 return null;
             });
-        }).exceptionally(e -> {
-            error(source, e);
-            return null;
-        });
+        } else {
+            // Multiplayer: direct spawn (no tunnel)
+            String address = lan.getServerAddress();
+            if (address == null) {
+                msg(source, "Cannot detect server address.", Formatting.RED);
+                return;
+            }
+
+            BrainApiClient.get().listBots().thenAccept(bots -> {
+                BotInfo found = null;
+                for (BotInfo bot : bots) {
+                    if (bot.bot_name.equalsIgnoreCase(name)) {
+                        found = bot;
+                        break;
+                    }
+                }
+                if (found == null) {
+                    msg(source, "Bot '" + name + "' not found. Use /vm list.", Formatting.RED);
+                    return;
+                }
+                final BotInfo target = found;
+                if (target.isOnline()) {
+                    msg(source, target.bot_name + " is already online.", Formatting.YELLOW);
+                    return;
+                }
+
+                String host;
+                int port;
+                if (address.contains(":")) {
+                    String[] parts = address.split(":");
+                    host = parts[0];
+                    port = Integer.parseInt(parts[1]);
+                } else {
+                    host = address;
+                    port = 25565;
+                }
+
+                msg(source, "Spawning " + target.bot_name + " on " + address + "...", Formatting.YELLOW);
+                BrainApiClient.get().spawnBot(target.id, host, port).thenRun(() -> {
+                    msg(source, target.bot_name + " is joining!", Formatting.GREEN);
+                }).exceptionally(e -> {
+                    error(source, e);
+                    return null;
+                });
+            }).exceptionally(e -> {
+                error(source, e);
+                return null;
+            });
+        }
     }
 
     private static void despawnByName(Object source, String name) {
@@ -226,6 +284,8 @@ public class VmCommand {
             msg(source, "Despawning " + target.bot_name + "...", Formatting.YELLOW);
             BrainApiClient.get().despawnBot(target.id).thenRun(() -> {
                 msg(source, target.bot_name + " despawned.", Formatting.GREEN);
+                // Close tunnel for this bot
+                TunnelManager.get().closeTunnel(target.id);
             }).exceptionally(e -> {
                 error(source, e);
                 return null;
@@ -251,6 +311,15 @@ public class VmCommand {
                     Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN)
                             .append(Text.literal(text).formatted(color)),
                     false));
+        }
+    }
+
+    private static void openBrowser(Object source, String url) {
+        try {
+            Util.getOperatingSystem().open(URI.create(url));
+            msg(source, "Opening " + url, Formatting.AQUA);
+        } catch (Exception e) {
+            msg(source, "Could not open browser. Visit: " + url, Formatting.RED);
         }
     }
 

@@ -30,10 +30,10 @@ public class WorldEventHandler {
             }
         });
 
-        // On disconnect — cleanup UPnP ports
+        // On disconnect — cleanup tunnels
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             LanManager.get().onWorldLeave();
-            VoxelMindMod.LOGGER.info("World left — cleaned up LAN/UPnP.");
+            VoxelMindMod.LOGGER.info("World left — cleaned up LAN/tunnels.");
         });
     }
 }

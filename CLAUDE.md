@@ -11,7 +11,7 @@ Kein Agent-Code, kein LLM, kein Mineflayer, kein Memory im Mod.
 - **Java:** 21
 - **Build:** Gradle + Fabric Loom 1.9
 - **REST:** java.net.http.HttpClient (zero external deps)
-- **UPnP:** WaifUPnP (shaded, com.dosse.upnp)
+- **Tunnel:** java.net.http.WebSocket → Relay Server (relay.voxel-mind.com) — ersetzt UPnP + playit.gg
 - **Mixin:** IntegratedServer.openToLan (fixer LAN Port)
 
 ## Architektur
@@ -19,15 +19,18 @@ Kein Agent-Code, kein LLM, kein Mineflayer, kein Memory im Mod.
 com.voxelmind.mod/
 ├── VoxelMindMod.java          ← onInitialize (Config laden)
 ├── VoxelMindClient.java       ← onInitializeClient (Keybind, Commands, Events)
-├── config/ModConfig.java      ← Persistent JSON Config (.minecraft/config/voxelmind.json)
+├── config/ModConfig.java      ← Persistent JSON Config (.minecraft/config/voxelmind.json) — autoTunnel, relayUrl
 ├── api/BrainApiClient.java    ← REST Client (alle Brain Endpoints, async)
 ├── api/dto/                   ← Response DTOs
 ├── auth/AuthManager.java      ← Token State, Refresh, OAuth
 ├── auth/OAuthCallbackServer   ← Localhost HTTP Server fuer OAuth Callback
-├── lan/LanManager.java        ← LAN State, Auto-Open, Server-Adresse
-├── lan/UpnpManager.java       ← UPnP Port Mapping (WaifUPnP)
-├── gui/                       ← Vanilla MC Screens (VoxelMind, BotConfig, Login)
-├── command/VmCommand.java     ← /vm command tree (client-side)
+├── lan/LanManager.java        ← LAN State, Auto-Open, Server-Adresse, Tunnel-Cleanup
+├── tunnel/TunnelClient.java   ← WSS Client → Relay (Supabase JWT Auth)
+├── tunnel/TunnelBridge.java   ← TCP Bridge (Relay Port ↔ lokaler MC Port)
+├── tunnel/TunnelStatus.java   ← Status-Enum (DISCONNECTED/CONNECTING/CONNECTED)
+├── tunnel/TunnelManager.java  ← Lifecycle, autoTunnel-Logik
+├── gui/                       ← Vanilla MC Screens (VoxelMind, BotConfig, Login) — Tunnel-Status statt "port reachable"
+├── command/VmCommand.java     ← /vm command tree (client-side) — Tunnel statt UPnP/playit.gg
 ├── event/WorldEventHandler    ← Join/Leave Events (auto-LAN, cleanup)
 └── mixin/IntegratedServerMixin ← Fixed LAN Port
 ```

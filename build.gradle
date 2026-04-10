@@ -21,7 +21,7 @@ dependencies {
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-    // UPnP — WaifUPnP source included directly (LGPL, com.dosse.upnp)
+    // No external networking deps — uses java.net.http.WebSocket for tunnel
 }
 
 processResources {

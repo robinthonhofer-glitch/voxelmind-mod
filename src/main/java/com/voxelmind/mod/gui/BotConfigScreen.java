@@ -275,7 +275,12 @@ public class BotConfigScreen extends Screen {
                         return null;
                     });
         } else {
-            String ownerName = client.getSession().getUsername();
+            String ownerName = client.getSession() != null ? client.getSession().getUsername() : null;
+            if (ownerName == null || ownerName.isEmpty()) {
+                errorMsg = "Minecraft username not available. Please restart Minecraft.";
+                submitting = false;
+                return;
+            }
             BrainApiClient.get().createBot(name, personality, ownerName)
                     .thenRun(() -> client.execute(() -> client.setScreen(new VoxelMindScreen(null))))
                     .exceptionally(e -> {

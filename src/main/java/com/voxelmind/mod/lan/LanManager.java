@@ -1,6 +1,8 @@
 package com.voxelmind.mod.lan;
 
+import com.google.gson.JsonObject;
 import com.voxelmind.mod.VoxelMindMod;
+import com.voxelmind.mod.api.BrainApiClient;
 import com.voxelmind.mod.config.ModConfig;
 import com.voxelmind.mod.tunnel.TunnelManager;
 import net.minecraft.client.MinecraftClient;
@@ -51,12 +53,30 @@ public class LanManager {
         var server = client.getServer();
         if (server == null) return false;
 
-        // openToLan will be intercepted by our Mixin to use the fixed port
-        boolean success = server.openToLan(GameMode.SURVIVAL, false, ModConfig.getLanPort());
+        int attemptedPort = ModConfig.getLanPort();
+        boolean success;
+        try {
+            // openToLan will be intercepted by our Mixin to use the fixed port
+            success = server.openToLan(GameMode.SURVIVAL, false, attemptedPort);
+        } catch (Exception e) {
+            VoxelMindMod.LOGGER.error("Failed to open LAN — exception: {}", e.getMessage());
+            JsonObject data = new JsonObject();
+            data.addProperty("error", e.getMessage());
+            data.addProperty("attempted_port", attemptedPort);
+            BrainApiClient.get().sendTelemetry("lan_open_failed", "error", data, null);
+            return false;
+        }
+
         if (success) {
             VoxelMindMod.LOGGER.info("LAN opened on port {}", activePort);
+            // Telemetry is sent from onLanOpened() which is called by the Mixin right before
+            // openToLan returns — activePort is already set at that point.
         } else {
             VoxelMindMod.LOGGER.error("Failed to open LAN.");
+            JsonObject data = new JsonObject();
+            data.addProperty("error", "openToLan returned false");
+            data.addProperty("attempted_port", attemptedPort);
+            BrainApiClient.get().sendTelemetry("lan_open_failed", "error", data, null);
         }
         return success;
     }
@@ -71,6 +91,11 @@ public class LanManager {
         // Server address is localhost — the tunnel will make it reachable
         this.serverAddress = "localhost:" + port;
         VoxelMindMod.LOGGER.info("LAN opened on port {} — tunnel will handle connectivity", port);
+
+        JsonObject data = new JsonObject();
+        data.addProperty("port", port);
+        data.addProperty("server_address", this.serverAddress);
+        BrainApiClient.get().sendTelemetry("lan_open_success", "info", data, null);
     }
 
     /**

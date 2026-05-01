@@ -1,5 +1,6 @@
 package com.voxelmind.mod.command;
 
+import com.google.gson.JsonObject;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.voxelmind.mod.api.BrainApiClient;
 import com.voxelmind.mod.api.dto.BotInfo;
@@ -193,6 +194,15 @@ public class VmCommand {
                     return;
                 }
 
+                // Telemetry: snapshot what the client sees at spawn time
+                try {
+                    JsonObject telemetryData = new JsonObject();
+                    telemetryData.addProperty("bot_name", target.bot_name);
+                    telemetryData.addProperty("mode", "singleplayer_tunnel");
+                    telemetryData.add("status_snapshot", collectStatusSnapshot());
+                    BrainApiClient.get().sendTelemetry("spawn_attempt", "info", telemetryData, target.id);
+                } catch (Exception ignored) {}
+
                 msg(source, "Opening tunnel for " + target.bot_name + "...", Formatting.YELLOW);
                 int localPort = lan.getActivePort();
                 TunnelManager.get().openTunnel(target.id, localPort).thenAccept(tunnel -> {
@@ -236,6 +246,15 @@ public class VmCommand {
                     msg(source, target.bot_name + " is already online.", Formatting.YELLOW);
                     return;
                 }
+
+                // Telemetry: snapshot what the client sees at spawn time
+                try {
+                    JsonObject telemetryData = new JsonObject();
+                    telemetryData.addProperty("bot_name", target.bot_name);
+                    telemetryData.addProperty("mode", "multiplayer_direct");
+                    telemetryData.add("status_snapshot", collectStatusSnapshot());
+                    BrainApiClient.get().sendTelemetry("spawn_attempt", "info", telemetryData, target.id);
+                } catch (Exception ignored) {}
 
                 String host;
                 int port;
@@ -326,5 +345,30 @@ public class VmCommand {
     private static void error(Object source, Throwable e) {
         String message = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
         msg(source, message != null ? message : "Unknown error", Formatting.RED);
+    }
+
+    /**
+     * Collects the same state data shown by /vm status as a JsonObject.
+     * Re-used by both /vm status display and spawn_attempt telemetry,
+     * so both always produce the same structure.
+     *
+     * Note: agent-connected is NOT included here because it requires an async
+     * Brain call — including it would either block or require a callback.
+     * The Brain itself knows agent status better than we do anyway.
+     */
+    public static JsonObject collectStatusSnapshot() {
+        LanManager lan = LanManager.get();
+        TunnelStatus tunnelStatus = TunnelManager.get().getOverallStatus();
+
+        JsonObject snapshot = new JsonObject();
+        snapshot.addProperty("logged_in", ModConfig.isLoggedIn());
+        snapshot.addProperty("brain_url", ModConfig.getBrainUrl());
+        snapshot.addProperty("relay_url", ModConfig.getRelayUrl());
+        snapshot.addProperty("lan_open", lan.isLanOpen());
+        snapshot.addProperty("lan_port", lan.getActivePort());
+        snapshot.addProperty("server_address", lan.getServerAddress() != null ? lan.getServerAddress() : "");
+        snapshot.addProperty("tunnel_status", tunnelStatus.name());
+        snapshot.addProperty("is_singleplayer", lan.isSingleplayer());
+        return snapshot;
     }
 }

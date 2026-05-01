@@ -68,7 +68,7 @@ public class BrainApiClient {
     // ─── Spawn/Despawn ───
 
     public CompletableFuture<Void> spawnBot(String botId, String host, int port) {
-        var payload = Map.of("host", host, "port", port);
+        var payload = Map.of("host", host, "port", port, "mode", "companion");
         return sendAsync("POST", "/bots/" + botId + "/spawn", GSON.toJson(payload))
                 .thenApply(body -> null);
     }
@@ -109,6 +109,63 @@ public class BrainApiClient {
         if (botId != null && !botId.isEmpty()) map.put("bot_id", botId);
         return sendAsync("POST", "/feedback", GSON.toJson(map))
                 .thenApply(body -> null);
+    }
+
+    /**
+     * Fire-and-forget telemetry. Never throws, never blocks.
+     *
+     * @param eventType  e.g. "lan_open_success", "tunnel_status_change"
+     * @param severity   "info" | "warn" | "error"
+     * @param data       arbitrary context — no PII (no world paths, no passwords)
+     * @param botIdOrNull optional bot id, may be null
+     */
+    public CompletableFuture<Void> sendTelemetry(String eventType, String severity,
+                                                  com.google.gson.JsonObject data,
+                                                  String botIdOrNull) {
+        // Silent skip when not logged in — user hasn't authenticated yet, no token to send
+        if (!ModConfig.isLoggedIn()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        try {
+            var payload = new com.google.gson.JsonObject();
+            payload.addProperty("event_type", eventType);
+            payload.addProperty("severity", severity);
+            if (botIdOrNull != null && !botIdOrNull.isEmpty()) {
+                payload.addProperty("bot_id", botIdOrNull);
+            }
+            payload.add("data", data != null ? data : new com.google.gson.JsonObject());
+
+            String token = ModConfig.getAccessToken();
+            if (token.isEmpty()) {
+                return CompletableFuture.completedFuture(null);
+            }
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(ModConfig.getBrainUrl() + "/telemetry"))
+                    .timeout(Duration.ofSeconds(5))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+                    .build();
+
+            return http.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                    .thenApply(response -> {
+                        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                            VoxelMindMod.LOGGER.warn("Telemetry [{}] rejected: HTTP {}", eventType, response.statusCode());
+                        }
+                        return (Void) null;
+                    })
+                    .exceptionally(e -> {
+                        // Brain down or network error — log at warn, never propagate
+                        VoxelMindMod.LOGGER.warn("Telemetry [{}] failed: {}", eventType, e.getMessage());
+                        return null;
+                    });
+        } catch (Exception e) {
+            // Defensive: any synchronous error (URI parse, etc.) must not crash the caller
+            VoxelMindMod.LOGGER.warn("Telemetry [{}] build error: {}", eventType, e.getMessage());
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public CompletableFuture<Boolean> healthCheck() {

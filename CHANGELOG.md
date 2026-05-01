@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 (2026-05-01)
+
+### Under the hood
+
+- **Added: Telemetry** — The mod now sends critical events (LAN open/fail, tunnel status changes, OAuth errors, bot spawn attempts) to our server for diagnostic purposes. When something goes wrong, we can actually see what happened instead of guessing. No PII collected — only connection state info like port numbers and status codes.
+
+---
+
 ## 0.3.0-alpha (2026-04-09)
 
 ### Your bot talks without getting kicked

@@ -3,6 +3,7 @@ package com.voxelmind.mod.auth;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.voxelmind.mod.VoxelMindMod;
+import com.voxelmind.mod.api.BrainApiClient;
 import com.voxelmind.mod.config.ModConfig;
 
 import java.net.URI;
@@ -61,6 +62,7 @@ public class AuthManager {
             state = State.ERROR;
             errorMessage = error;
             VoxelMindMod.LOGGER.error("Login failed: {}", error);
+            sendOAuthFailedTelemetry("callback", error);
         });
 
         callbackServer.start();
@@ -74,6 +76,7 @@ public class AuthManager {
             VoxelMindMod.LOGGER.error("Failed to open browser: {}", e.getMessage());
             state = State.ERROR;
             errorMessage = "Could not open browser. Visit: " + loginUrl;
+            sendOAuthFailedTelemetry("browser_open", e.getMessage());
         }
     }
 
@@ -155,6 +158,23 @@ public class AuthManager {
         }
         if (state == State.LOGGING_IN) {
             state = State.LOGGED_OUT;
+        }
+    }
+
+    /**
+     * Fire-and-forget telemetry for OAuth failures.
+     * Safe to call at any point — if there's no token yet, BrainApiClient will skip silently.
+     */
+    private void sendOAuthFailedTelemetry(String stage, String errorMsg) {
+        try {
+            JsonObject data = new JsonObject();
+            data.addProperty("stage", stage);
+            if (errorMsg != null) {
+                data.addProperty("error", errorMsg);
+            }
+            BrainApiClient.get().sendTelemetry("oauth_failed", "error", data, null);
+        } catch (Exception e) {
+            VoxelMindMod.LOGGER.debug("AuthManager: Telemetry send failed: {}", e.getMessage());
         }
     }
 }

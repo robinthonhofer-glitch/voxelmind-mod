@@ -3,6 +3,7 @@ package com.voxelmind.mod.tunnel;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.voxelmind.mod.VoxelMindMod;
+import com.voxelmind.mod.api.BrainApiClient;
 import com.voxelmind.mod.config.ModConfig;
 
 import java.io.IOException;
@@ -52,18 +53,43 @@ public class TunnelClient {
     public String getErrorMessage() { return errorMessage; }
     public String getBotId() { return botId; }
 
+    /**
+     * Central status transition — fires telemetry on every change.
+     * Call this instead of assigning status directly.
+     */
+    private void setStatus(TunnelStatus newStatus, String errorMsgOrNull) {
+        TunnelStatus oldStatus = this.status;
+        this.status = newStatus;
+        if (oldStatus == newStatus) return; // no-op, avoid duplicate events
+
+        try {
+            String severity = (newStatus == TunnelStatus.ERROR) ? "error" : "info";
+            JsonObject data = new JsonObject();
+            data.addProperty("old", oldStatus.name());
+            data.addProperty("new", newStatus.name());
+            data.addProperty("bot_id", botId);
+            if (errorMsgOrNull != null && !errorMsgOrNull.isEmpty()) {
+                data.addProperty("error", errorMsgOrNull);
+            }
+            BrainApiClient.get().sendTelemetry("tunnel_status_change", severity, data, botId);
+        } catch (Exception e) {
+            // Telemetry must never affect tunnel logic
+            VoxelMindMod.LOGGER.debug("TunnelClient [{}]: Telemetry error in setStatus: {}", botId, e.getMessage());
+        }
+    }
+
     public CompletableFuture<TunnelClient> connect() {
         CompletableFuture<TunnelClient> ready = new CompletableFuture<>();
         shouldReconnect = true;
-        status = TunnelStatus.CONNECTING;
+        setStatus(TunnelStatus.CONNECTING, null);
         errorMessage = null;
 
         String relayUrl = ModConfig.getRelayUrl();
         String token = ModConfig.getAccessToken();
 
         if (token.isEmpty()) {
-            status = TunnelStatus.ERROR;
             errorMessage = "Not logged in";
+            setStatus(TunnelStatus.ERROR, errorMessage);
             ready.completeExceptionally(new RuntimeException(errorMessage));
             return ready;
         }
@@ -76,7 +102,7 @@ public class TunnelClient {
                     public void onOpen(WebSocket ws) {
                         VoxelMindMod.LOGGER.info("TunnelClient [{}]: WSS connected to {}", botId, relayUrl);
                         webSocket = ws;
-                        status = TunnelStatus.AUTHENTICATING;
+                        setStatus(TunnelStatus.AUTHENTICATING, null);
 
                         JsonObject auth = new JsonObject();
                         auth.addProperty("type", "auth");
@@ -211,8 +237,8 @@ public class TunnelClient {
                 case "auth_error" -> {
                     String message = msg.has("message") ? msg.get("message").getAsString() : "Auth failed";
                     VoxelMindMod.LOGGER.error("TunnelClient [{}]: Auth error: {}", botId, message);
-                    status = TunnelStatus.ERROR;
                     errorMessage = message;
+                    setStatus(TunnelStatus.ERROR, message);
                     shouldReconnect = false;
                     ready.completeExceptionally(new RuntimeException("Tunnel auth failed: " + message));
                 }
@@ -220,14 +246,14 @@ public class TunnelClient {
                     tunnelPort = msg.get("tcpPort").getAsInt();
                     relayHost = msg.get("relayHost").getAsString();
                     VoxelMindMod.LOGGER.info("TunnelClient [{}]: Tunnel ready at {}:{}", botId, relayHost, tunnelPort);
-                    status = TunnelStatus.READY;
+                    setStatus(TunnelStatus.READY, null);
                     ready.complete(this);
                 }
                 case "tunnel_error" -> {
                     String message = msg.has("message") ? msg.get("message").getAsString() : "Tunnel failed";
                     VoxelMindMod.LOGGER.error("TunnelClient [{}]: Tunnel error: {}", botId, message);
-                    status = TunnelStatus.ERROR;
                     errorMessage = message;
+                    setStatus(TunnelStatus.ERROR, message);
                     ready.completeExceptionally(new RuntimeException("Tunnel error: " + message));
                 }
                 case "tcp_connected" -> {
@@ -290,7 +316,7 @@ public class TunnelClient {
         tunnelPort = 0;
 
         if (shouldReconnect) {
-            status = TunnelStatus.CONNECTING;
+            setStatus(TunnelStatus.CONNECTING, null);
             VoxelMindMod.LOGGER.info("TunnelClient [{}]: Reconnecting in {}ms...", botId, RECONNECT_DELAY_MS);
             CompletableFuture.runAsync(() -> {
                 try {
@@ -301,7 +327,7 @@ public class TunnelClient {
                 }
             });
         } else {
-            status = TunnelStatus.DISCONNECTED;
+            setStatus(TunnelStatus.DISCONNECTED, null);
         }
 
         ready.completeExceptionally(new RuntimeException("Tunnel disconnected"));
@@ -309,7 +335,7 @@ public class TunnelClient {
 
     public void disconnect() {
         shouldReconnect = false;
-        status = TunnelStatus.DISCONNECTED;
+        setStatus(TunnelStatus.DISCONNECTED, null);
         stopAllBridges();
         if (webSocket != null) {
             try {

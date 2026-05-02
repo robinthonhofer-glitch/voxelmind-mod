@@ -8,6 +8,7 @@ import com.voxelmind.mod.auth.AuthManager;
 import com.voxelmind.mod.config.ModConfig;
 import com.voxelmind.mod.gui.VoxelMindScreen;
 import com.voxelmind.mod.lan.LanManager;
+import com.voxelmind.mod.spawn.SpawnCheckScheduler;
 import com.voxelmind.mod.tunnel.TunnelManager;
 import com.voxelmind.mod.tunnel.TunnelStatus;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
@@ -209,6 +210,7 @@ public class VmCommand {
                     msg(source, "Spawning " + target.bot_name + " via tunnel...", Formatting.YELLOW);
                     BrainApiClient.get().spawnBot(target.id, tunnel.getRelayHost(), tunnel.getTunnelPort()).thenRun(() -> {
                         msg(source, target.bot_name + " is joining!", Formatting.GREEN);
+                        SpawnCheckScheduler.scheduleCheck(target.id, target.bot_name);
                     }).exceptionally(e -> {
                         error(source, e);
                         return null;
@@ -270,6 +272,7 @@ public class VmCommand {
                 msg(source, "Spawning " + target.bot_name + " on " + address + "...", Formatting.YELLOW);
                 BrainApiClient.get().spawnBot(target.id, host, port).thenRun(() -> {
                     msg(source, target.bot_name + " is joining!", Formatting.GREEN);
+                    SpawnCheckScheduler.scheduleCheck(target.id, target.bot_name);
                 }).exceptionally(e -> {
                     error(source, e);
                     return null;

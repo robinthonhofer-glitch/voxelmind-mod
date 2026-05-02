@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2 (2026-05-02)
+
+### Fix
+
+- **Better diagnostics for failed spawns** — When your bot doesn't connect within 12 seconds, the mod now tells you the most likely reason (e.g. server online-mode=true) instead of leaving you guessing.
+
+---
+
 ## 0.3.1 (2026-05-01)
 
 ### Under the hood

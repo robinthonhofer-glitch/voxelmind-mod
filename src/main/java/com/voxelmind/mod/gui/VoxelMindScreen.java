@@ -7,6 +7,7 @@ import com.voxelmind.mod.api.dto.ProfileInfo;
 import com.voxelmind.mod.auth.AuthManager;
 import com.voxelmind.mod.config.ModConfig;
 import com.voxelmind.mod.lan.LanManager;
+import com.voxelmind.mod.spawn.SpawnCheckScheduler;
 import com.voxelmind.mod.tunnel.TunnelManager;
 import com.voxelmind.mod.tunnel.TunnelStatus;
 import net.minecraft.client.gui.DrawContext;
@@ -65,9 +66,9 @@ public class VoxelMindScreen extends Screen {
         int centerX = this.width / 2;
         int panelLeft = centerX - PANEL_WIDTH / 2;
 
-        // Create Bot (left)
+        // Create Bot (left) — opens Mode Selection first
         addDrawableChild(ButtonWidget.builder(Text.translatable("gui.voxelmind.create_bot"), button -> {
-            client.setScreen(new BotConfigScreen(this, null));
+            client.setScreen(new BotModeSelectScreen(this));
         }).dimensions(panelLeft, bottomY, 80, 20).build());
 
         // Feedback
@@ -182,17 +183,9 @@ public class VoxelMindScreen extends Screen {
             context.drawTextWithShadow(textRenderer, Text.literal(serverText).formatted(Formatting.GRAY),
                     panelLeft, y, 0xAAAAAA);
         }
-        y += 12;
+        y += 28; // status row height — must be tall enough for the 3-line sparks block
 
-        String agentText = agentStatus != null
-                ? (agentStatus.connected ? "Agent: Connected" : "Agent: Disconnected")
-                : "Agent: ...";
-        Formatting agentColor = agentStatus != null && agentStatus.connected ? Formatting.GREEN : Formatting.RED;
-        context.drawTextWithShadow(textRenderer, Text.literal(agentText).formatted(agentColor),
-                panelLeft, y, 0xFFFFFF);
-        y += 16;
-
-        // Sparks display (right column, same Y as status bar)
+        // Sparks display (right column, anchored to statusTop)
         renderSparks(context, panelRight, statusTop, mouseX, mouseY);
 
         // Separator
@@ -220,10 +213,43 @@ public class VoxelMindScreen extends Screen {
             int botAreaTop = y;
             int botAreaBottom = this.height - 40;
             int maxVisible = (botAreaBottom - botAreaTop) / BOT_ROW_HEIGHT;
+            int totalBots = bots.size();
+            boolean canScrollUp = scrollOffset > 0;
+            boolean canScrollDown = scrollOffset + maxVisible < totalBots;
+
+            // ▲ scroll indicator — above first row
+            if (canScrollUp) {
+                String upArrow = "▲";
+                int arrowX = centerX - textRenderer.getWidth(upArrow) / 2;
+                boolean upHovered = mouseX >= arrowX - 4 && mouseX <= arrowX + textRenderer.getWidth(upArrow) + 4
+                        && mouseY >= y - 11 && mouseY <= y - 1;
+                context.drawTextWithShadow(textRenderer,
+                        Text.literal(upArrow).formatted(upHovered ? Formatting.WHITE : Formatting.GRAY),
+                        arrowX, y - 11, 0xFFFFFF);
+            }
+
+            // Scroll position counter e.g. "2/5"
+            if (totalBots > maxVisible) {
+                String counter = (scrollOffset + 1) + "/" + totalBots;
+                context.drawTextWithShadow(textRenderer,
+                        Text.literal(counter).formatted(Formatting.DARK_GRAY),
+                        panelRight - textRenderer.getWidth(counter), botAreaTop - 11, 0x888888);
+            }
 
             for (int i = scrollOffset; i < bots.size() && i < scrollOffset + maxVisible; i++) {
                 renderBotRow(context, bots.get(i), panelLeft, panelRight, y, mouseX, mouseY);
                 y += BOT_ROW_HEIGHT;
+            }
+
+            // ▼ scroll indicator — below last visible row
+            if (canScrollDown) {
+                String downArrow = "▼";
+                int arrowX = centerX - textRenderer.getWidth(downArrow) / 2;
+                boolean downHovered = mouseX >= arrowX - 4 && mouseX <= arrowX + textRenderer.getWidth(downArrow) + 4
+                        && mouseY >= y + 1 && mouseY <= y + 11;
+                context.drawTextWithShadow(textRenderer,
+                        Text.literal(downArrow).formatted(downHovered ? Formatting.WHITE : Formatting.GRAY),
+                        arrowX, y + 1, 0xFFFFFF);
             }
         }
     }
@@ -244,48 +270,46 @@ public class VoxelMindScreen extends Screen {
         int current = Math.max(0, profile.sparks_remaining);
         int max = Math.max(current, profile.maxSparksForTier());
 
-        // Line 1: ⚡ 247 / 500 Sparks
+        // top+0: "[Get More]" link — right-aligned
+        String link = current == 0 ? "Out of sparks — Get More" : "[Get More]";
+        Formatting linkColor = current == 0 ? Formatting.RED : Formatting.AQUA;
+        boolean hovered = mouseX >= right - textRenderer.getWidth(link)
+                && mouseX <= right
+                && mouseY >= top && mouseY <= top + 10;
+        if (hovered) linkColor = Formatting.WHITE;
+        context.drawTextWithShadow(textRenderer,
+                Text.literal(link).formatted(linkColor),
+                right - textRenderer.getWidth(link), top, 0xFFFFFF);
+
+        // top+10: ⚡ 247 / 500 Sparks — right-aligned
         String label = "\u26A1 " + current + " / " + max + " Sparks";
         Formatting labelColor = current == 0 ? Formatting.RED
                 : (current < max / 5 ? Formatting.YELLOW : Formatting.WHITE);
-        int labelWidth = textRenderer.getWidth(label);
         context.drawTextWithShadow(textRenderer,
                 Text.literal(label).formatted(labelColor),
-                right - labelWidth, top, 0xFFFFFF);
+                right - textRenderer.getWidth(label), top + 10, 0xFFFFFF);
 
-        // Line 2: progress bar (80 wide)
+        // top+20: progress bar — right-aligned, fits within 28px status area
         int barW = 80;
         int barX = right - barW;
-        int barY = top + 12;
+        int barY = top + 20;
         int barH = 4;
         context.fill(barX, barY, barX + barW, barY + barH, 0xFF333333);
         int fillW = max > 0 ? (barW * current) / max : 0;
         int fillColor = current == 0 ? 0xFFAA0000
                 : (current < max / 5 ? 0xFFFFAA00 : 0xFF55FF55);
         context.fill(barX, barY, barX + fillW, barY + barH, fillColor);
-
-        // Line 3: "Get More" link (clickable text)
-        String link = current == 0 ? "Out of sparks — Get More" : "[Get More]";
-        Formatting linkColor = current == 0 ? Formatting.RED : Formatting.AQUA;
-        boolean hovered = mouseX >= right - textRenderer.getWidth(link)
-                && mouseX <= right
-                && mouseY >= barY + 6 && mouseY <= barY + 18;
-        if (hovered) linkColor = Formatting.WHITE;
-        context.drawTextWithShadow(textRenderer,
-                Text.literal(link).formatted(linkColor),
-                right - textRenderer.getWidth(link), barY + 8, 0xFFFFFF);
     }
 
     private boolean isSparksLinkClicked(double mouseX, double mouseY) {
         int centerX = this.width / 2;
         int right = centerX + PANEL_WIDTH / 2;
         int top = 40; // title (20) + 20
-        int barY = top + 12;
         String link = (profile != null && profile.sparks_remaining == 0)
                 ? "Out of sparks — Get More" : "[Get More]";
         int linkW = textRenderer.getWidth(link);
         return mouseX >= right - linkW && mouseX <= right
-                && mouseY >= barY + 8 && mouseY <= barY + 20;
+                && mouseY >= top && mouseY <= top + 10;
     }
 
     private void renderBotRow(DrawContext context, BotInfo bot, int left, int right, int y,
@@ -317,23 +341,60 @@ public class VoxelMindScreen extends Screen {
         context.drawTextWithShadow(textRenderer, Text.literal(statusText).formatted(statusColor),
                 right - textRenderer.getWidth(statusText) - 8, y + 6, 0xFFFFFF);
 
-        // Action buttons (rendered as text, click detection in mouseClicked)
-        int btnY = y + 24;
+        // Action buttons
+        int btnY = y + 23;
+        int btnH = 16;
+
+        // Primary action: Spawn / Despawn — filled colored button
+        int primaryBtnW = 58;
+        int primaryBtnX = right - primaryBtnW - 6;
+        boolean primaryHovered = mouseX >= primaryBtnX && mouseX <= primaryBtnX + primaryBtnW
+                && mouseY >= btnY && mouseY < btnY + btnH;
+
         if (pending) {
-            context.drawTextWithShadow(textRenderer, Text.literal("[...]").formatted(Formatting.YELLOW),
-                    right - 60, btnY, 0xFFFF55);
+            // Gray background, yellow "..." text
+            int bgColor = primaryHovered ? 0xFF555533 : 0xFF444422;
+            context.fill(primaryBtnX, btnY, primaryBtnX + primaryBtnW, btnY + btnH, bgColor);
+            context.fill(primaryBtnX, btnY, primaryBtnX + primaryBtnW, btnY + 1, 0xFF666644);
+            context.fill(primaryBtnX, btnY + btnH - 1, primaryBtnX + primaryBtnW, btnY + btnH, 0xFF333311);
+            String pendingLabel = "...";
+            context.drawCenteredTextWithShadow(textRenderer,
+                    Text.literal(pendingLabel).formatted(Formatting.YELLOW),
+                    primaryBtnX + primaryBtnW / 2, btnY + (btnH - 8) / 2, 0xFFFF55);
         } else if (bot.isOnline()) {
-            context.drawTextWithShadow(textRenderer, Text.literal("[Despawn]").formatted(Formatting.RED),
-                    right - 60, btnY, 0xFF5555);
+            // Red background for Despawn
+            int bgColor = primaryHovered ? 0xFF9A3D3D : 0xFF7A2D2D;
+            context.fill(primaryBtnX, btnY, primaryBtnX + primaryBtnW, btnY + btnH, bgColor);
+            context.fill(primaryBtnX, btnY, primaryBtnX + primaryBtnW, btnY + 1, 0xFFBB5555);
+            context.fill(primaryBtnX, btnY + btnH - 1, primaryBtnX + primaryBtnW, btnY + btnH, 0xFF551111);
+            context.drawCenteredTextWithShadow(textRenderer,
+                    Text.literal("Despawn").formatted(Formatting.WHITE),
+                    primaryBtnX + primaryBtnW / 2, btnY + (btnH - 8) / 2, 0xFFFFFF);
         } else {
-            context.drawTextWithShadow(textRenderer, Text.literal("[Spawn]").formatted(Formatting.GREEN),
-                    right - 60, btnY, 0x55FF55);
+            // Green background for Spawn
+            int bgColor = primaryHovered ? 0xFF3D9A3D : 0xFF2D7A2D;
+            context.fill(primaryBtnX, btnY, primaryBtnX + primaryBtnW, btnY + btnH, bgColor);
+            context.fill(primaryBtnX, btnY, primaryBtnX + primaryBtnW, btnY + 1, 0xFF55BB55);
+            context.fill(primaryBtnX, btnY + btnH - 1, primaryBtnX + primaryBtnW, btnY + btnH, 0xFF115511);
+            context.drawCenteredTextWithShadow(textRenderer,
+                    Text.literal("Spawn").formatted(Formatting.WHITE),
+                    primaryBtnX + primaryBtnW / 2, btnY + (btnH - 8) / 2, 0xFFFFFF);
         }
+
+        // Secondary: [Edit] — text only, less prominent
         context.drawTextWithShadow(textRenderer, Text.literal("[Edit]").formatted(Formatting.YELLOW),
-                right - 110, btnY, 0xFFFF55);
+                primaryBtnX - textRenderer.getWidth("[Edit]") - 6, btnY + (btnH - 8) / 2, 0xFFFF55);
+
+        // Secondary: [Delete] — text only, only when offline
         if (!bot.isOnline() && !pending) {
             context.drawTextWithShadow(textRenderer, Text.literal("[Delete]").formatted(Formatting.DARK_RED),
-                    left + 8, btnY, 0xAA0000);
+                    left + 8, btnY + (btnH - 8) / 2, 0xAA0000);
+        }
+
+        // Secondary: [Monitor] — text only, only when online
+        if (bot.isOnline() && !pending) {
+            context.drawTextWithShadow(textRenderer, Text.literal("[Monitor]").formatted(Formatting.AQUA),
+                    left + 8, btnY + (btnH - 8) / 2, 0x55FFFF);
         }
     }
 
@@ -355,24 +416,53 @@ public class VoxelMindScreen extends Screen {
             int panelLeft = centerX - PANEL_WIDTH / 2;
             int panelRight = centerX + PANEL_WIDTH / 2;
 
-            // Bot list area starts below header (title 20 + status block ~36 + separator 7
-            //   + optional statusMsg line 12)
-            int y = 20 + 20 + 12 + 16 + 7;
-            if (statusMsg != null) y += 12;
+            // Bot list area starts below header: title(y=20) + y+=20 + y+=28 (status row) + y+=6 (separator)
+            int headerY = 20 + 20 + 28 + 6; // = 74
+            if (statusMsg != null) headerY += 12;
 
-            for (int i = scrollOffset; i < bots.size(); i++) {
+            int botAreaBottom = this.height - 40;
+            int maxVisible = (botAreaBottom - headerY) / BOT_ROW_HEIGHT;
+
+            // ▲ up arrow click
+            if (scrollOffset > 0) {
+                String upArrow = "▲";
+                int arrowX = centerX - textRenderer.getWidth(upArrow) / 2;
+                if (mouseX >= arrowX - 4 && mouseX <= arrowX + textRenderer.getWidth(upArrow) + 4
+                        && mouseY >= headerY - 11 && mouseY <= headerY - 1) {
+                    scrollOffset--;
+                    return true;
+                }
+            }
+
+            // ▼ down arrow click
+            if (scrollOffset + maxVisible < bots.size()) {
+                int downArrowY = headerY + maxVisible * BOT_ROW_HEIGHT;
+                String downArrow = "▼";
+                int arrowX = centerX - textRenderer.getWidth(downArrow) / 2;
+                if (mouseX >= arrowX - 4 && mouseX <= arrowX + textRenderer.getWidth(downArrow) + 4
+                        && mouseY >= downArrowY + 1 && mouseY <= downArrowY + 11) {
+                    scrollOffset++;
+                    return true;
+                }
+            }
+
+            int y = headerY;
+            for (int i = scrollOffset; i < bots.size() && i < scrollOffset + maxVisible; i++) {
                 int rowTop = y;
                 int rowBottom = y + BOT_ROW_HEIGHT;
 
                 if (mouseY >= rowTop && mouseY < rowBottom) {
                     BotInfo bot = bots.get(i);
-                    int btnY = rowTop + 24;
+                    int btnY = rowTop + 23;
+                    int btnH = 16;
 
                     if (pendingBotIds.contains(bot.id)) return true; // ignore clicks while pending
 
-                    // [Spawn] / [Despawn] button area
-                    if (mouseX >= panelRight - 60 && mouseX <= panelRight - 8
-                            && mouseY >= btnY && mouseY <= btnY + 12) {
+                    // Spawn / Despawn filled button area
+                    int primaryBtnW = 58;
+                    int primaryBtnX = panelRight - primaryBtnW - 6;
+                    if (mouseX >= primaryBtnX && mouseX <= primaryBtnX + primaryBtnW
+                            && mouseY >= btnY && mouseY < btnY + btnH) {
                         if (bot.isOnline()) {
                             despawnBot(bot);
                         } else {
@@ -381,21 +471,32 @@ public class VoxelMindScreen extends Screen {
                         return true;
                     }
 
-                    // [Edit] button area
-                    if (mouseX >= panelRight - 110 && mouseX <= panelRight - 65
-                            && mouseY >= btnY && mouseY <= btnY + 12) {
+                    // [Edit] button area — text to the left of the primary button
+                    int editW = textRenderer.getWidth("[Edit]");
+                    int editX = primaryBtnX - editW - 6;
+                    if (mouseX >= editX && mouseX <= editX + editW
+                            && mouseY >= btnY && mouseY < btnY + btnH) {
                         client.setScreen(new BotConfigScreen(this, bot));
                         return true;
                     }
 
                     // [Delete] button area (only when offline)
-                    if (!bot.isOnline() && mouseX >= panelLeft + 8 && mouseX <= panelLeft + 60
-                            && mouseY >= btnY && mouseY <= btnY + 12) {
+                    int deleteW = textRenderer.getWidth("[Delete]");
+                    if (!bot.isOnline() && mouseX >= panelLeft + 8 && mouseX <= panelLeft + 8 + deleteW
+                            && mouseY >= btnY && mouseY < btnY + btnH) {
                         BrainApiClient.get().deleteBot(bot.id).thenRun(this::loadData)
                                 .exceptionally(e -> {
                                     this.errorMsg = friendlyError(e);
                                     return null;
                                 });
+                        return true;
+                    }
+
+                    // [Monitor] button area (only when online)
+                    int monitorW = textRenderer.getWidth("[Monitor]");
+                    if (bot.isOnline() && mouseX >= panelLeft + 8 && mouseX <= panelLeft + 8 + monitorW
+                            && mouseY >= btnY && mouseY < btnY + btnH) {
+                        client.setScreen(new BotMonitorScreen(this, bot));
                         return true;
                     }
                 }
@@ -440,6 +541,8 @@ public class VoxelMindScreen extends Screen {
                             statusMsg = null;
                             if (err != null) {
                                 this.errorMsg = friendlySpawnError(err);
+                            } else {
+                                SpawnCheckScheduler.scheduleCheck(bot.id, bot.bot_name);
                             }
                             loadData();
                         });
@@ -474,6 +577,8 @@ public class VoxelMindScreen extends Screen {
                         statusMsg = null;
                         if (err != null) {
                             this.errorMsg = friendlySpawnError(err);
+                        } else {
+                            SpawnCheckScheduler.scheduleCheck(bot.id, bot.bot_name);
                         }
                         loadData();
                     });
@@ -510,6 +615,8 @@ public class VoxelMindScreen extends Screen {
             return "Connection refused — is the server running?";
         if (lower.contains("econnreset") || lower.contains("socket closed"))
             return "Connection dropped — check online-mode=false on the server";
+        if (lower.contains("fabric loader") || lower.contains("fabric api") || lower.contains("requires fabric"))
+            return "Server requires Fabric Loader/API — bots can't join modded servers. Use a vanilla server.";
         if (lower.contains("kick") || lower.contains("whitelist"))
             return "Bot was kicked — check online-mode=false and whitelist";
         if (lower.contains("timeout"))

@@ -43,12 +43,20 @@ public class BrainApiClient {
     }
 
     public CompletableFuture<BotInfo> createBot(String name, String personalityId, String ownerPlayerName) {
-        var payload = Map.of(
-                "bot_name", name,
-                "personality_id", personalityId,
-                "owner_player_name", ownerPlayerName
-        );
-        return sendAsync("POST", "/bots", GSON.toJson(payload))
+        return createBot(name, personalityId, ownerPlayerName, "public");
+    }
+
+    /**
+     * Creates a bot with an explicit chat mode.
+     * @param chatMode one of "public", "whisper", "mixed"
+     */
+    public CompletableFuture<BotInfo> createBot(String name, String personalityId, String ownerPlayerName, String chatMode) {
+        var map = new java.util.HashMap<String, String>();
+        map.put("bot_name", name);
+        map.put("personality_id", personalityId);
+        map.put("owner_player_name", ownerPlayerName);
+        map.put("chat_mode", chatMode);
+        return sendAsync("POST", "/bots", GSON.toJson(map))
                 .thenApply(body -> GSON.fromJson(body, BotInfo.class));
     }
 
@@ -61,6 +69,17 @@ public class BrainApiClient {
         var map = new java.util.HashMap<String, String>();
         if (name != null) map.put("bot_name", name);
         if (personalityId != null) map.put("personality_id", personalityId);
+        return sendAsync("PATCH", "/bots/" + botId, GSON.toJson(map))
+                .thenApply(body -> GSON.fromJson(body, BotInfo.class));
+    }
+
+    /**
+     * Updates only the chat mode of an existing bot.
+     * @param chatMode one of "public", "whisper", "mixed"
+     */
+    public CompletableFuture<BotInfo> updateBotChatMode(String botId, String chatMode) {
+        var map = new java.util.HashMap<String, String>();
+        map.put("chat_mode", chatMode);
         return sendAsync("PATCH", "/bots/" + botId, GSON.toJson(map))
                 .thenApply(body -> GSON.fromJson(body, BotInfo.class));
     }

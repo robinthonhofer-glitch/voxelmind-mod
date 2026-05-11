@@ -67,11 +67,13 @@ public class SpawnCheckScheduler {
                 String status = state.status != null ? state.status : "unknown";
 
                 if (!"online".equalsIgnoreCase(status)) {
+                    String disconnectReason = state.disconnectReason; // may be null
                     VoxelMindMod.LOGGER.warn(
-                            "SpawnCheck [{}]: bot status '{}' after {}ms — showing hint",
-                            botName, status, CHECK_DELAY_MS);
+                            "SpawnCheck [{}]: bot status '{}' after {}ms (reason={}) — showing hint",
+                            botName, status, CHECK_DELAY_MS,
+                            disconnectReason != null ? disconnectReason : "unknown");
 
-                    sendHintToPlayer(botName, status);
+                    sendHintToPlayer(botName, status, disconnectReason);
                     sendTelemetry(botId, status);
                 } else {
                     VoxelMindMod.LOGGER.info("SpawnCheck [{}]: bot is online — all good", botName);
@@ -89,6 +91,15 @@ public class SpawnCheckScheduler {
     }
 
     private static void sendHintToPlayer(String botName, String lastStatus) {
+        sendHintToPlayer(botName, lastStatus, null);
+    }
+
+    /**
+     * Shows an in-chat hint after a spawn check fails.
+     *
+     * @param disconnectReason optional Brain disconnect reason (e.g. "unsupported_server")
+     */
+    static void sendHintToPlayer(String botName, String lastStatus, String disconnectReason) {
         MinecraftClient client = MinecraftClient.getInstance();
         client.execute(() -> {
             if (client.player == null) return;
@@ -96,32 +107,53 @@ public class SpawnCheckScheduler {
             client.player.sendMessage(
                     Text.literal("").formatted(Formatting.WHITE)
                             .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
-                            .append(Text.literal("⚠ " + botName + " doesn't seem to be connected.")
+                            .append(Text.literal("⚠ " + botName + " couldn't connect to this server.")
                                     .formatted(Formatting.YELLOW)),
                     false);
 
-            client.player.sendMessage(
-                    Text.literal("").formatted(Formatting.WHITE)
-                            .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
-                            .append(Text.literal("Most likely cause: server online-mode=true.")
-                                    .formatted(Formatting.GOLD)),
-                    false);
-
-            client.player.sendMessage(
-                    Text.literal("").formatted(Formatting.WHITE)
-                            .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
-                            .append(Text.literal("Fix: set 'online-mode=false' in server.properties, or use a singleplayer world.")
-                                    .formatted(Formatting.GRAY)),
-                    false);
-
-            client.player.sendMessage(
-                    Text.literal("").formatted(Formatting.WHITE)
-                            .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
-                            .append(Text.literal("More info: ")
-                                    .formatted(Formatting.GRAY))
-                            .append(Text.literal("https://voxel-mind.com/help/online-mode")
-                                    .formatted(Formatting.AQUA)),
-                    false);
+            if ("unsupported_server".equals(disconnectReason)) {
+                // Fabric / modded server — specific, actionable hint
+                client.player.sendMessage(
+                        Text.literal("").formatted(Formatting.WHITE)
+                                .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
+                                .append(Text.literal("This server requires Fabric Loader or Fabric API.")
+                                        .formatted(Formatting.RED)),
+                        false);
+                client.player.sendMessage(
+                        Text.literal("").formatted(Formatting.WHITE)
+                                .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
+                                .append(Text.literal("Bots can only join vanilla servers (online-mode=false). Modded servers are not supported.")
+                                        .formatted(Formatting.GOLD)),
+                        false);
+                client.player.sendMessage(
+                        Text.literal("").formatted(Formatting.WHITE)
+                                .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
+                                .append(Text.literal("Use a vanilla server or singleplayer world instead.")
+                                        .formatted(Formatting.GRAY)),
+                        false);
+            } else {
+                // Generic hint — likely online-mode=true
+                client.player.sendMessage(
+                        Text.literal("").formatted(Formatting.WHITE)
+                                .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
+                                .append(Text.literal("Most likely cause: server online-mode=true.")
+                                        .formatted(Formatting.GOLD)),
+                        false);
+                client.player.sendMessage(
+                        Text.literal("").formatted(Formatting.WHITE)
+                                .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
+                                .append(Text.literal("Fix: set 'online-mode=false' in server.properties, or use a singleplayer world.")
+                                        .formatted(Formatting.GRAY)),
+                        false);
+                client.player.sendMessage(
+                        Text.literal("").formatted(Formatting.WHITE)
+                                .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
+                                .append(Text.literal("More info: ")
+                                        .formatted(Formatting.GRAY))
+                                .append(Text.literal("https://voxel-mind.com/help/online-mode")
+                                        .formatted(Formatting.AQUA)),
+                        false);
+            }
         });
     }
 

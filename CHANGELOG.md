@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.3 (2026-05-11)
+
+### New
+
+- **Choose how your bot talks to you.** When creating or editing a bot, you can now pick a chat mode:
+  - **Public** (default): Bot talks in the public chat, visible to everyone on the server.
+  - **Whisper**: Bot only whispers to you privately via `/msg`. No spam in the public chat.
+  - **Mixed**: Bot picks the channel itself depending on context — the old behavior.
+  - The button cycles through the three options on the bot config screen.
+
+### Fix
+
+- **Bots stop endlessly retrying on Fabric servers.** If your server requires Fabric Loader or Fabric API, the bot used to loop spawn → kick → respawn until you manually despawned it. Now the mod recognizes the kick reason, stops the retry, and tells you exactly what's needed: "Server requires Fabric Loader or Fabric API — bots can only join vanilla servers."
+- **Fewer duplicate bot messages.** The brain had a habit of sending the same message twice in quick succession (slightly different wording). Two layers of defense now prevent that — the LLM sees its own recent words and is told not to repeat, and a backup check kills exact-duplicate messages within 5 seconds.
+
+---
+
 ## 0.3.2 (2026-05-02)
 
 ### Fix

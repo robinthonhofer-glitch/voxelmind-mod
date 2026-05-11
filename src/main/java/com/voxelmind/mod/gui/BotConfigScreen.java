@@ -83,10 +83,20 @@ public class BotConfigScreen extends Screen {
     /** Vertical gap between sliders. */
     private static final int SLIDER_GAP = 2;
 
+    /** Ordered chat mode values. Index cycles on button click. */
+    private static final String[] CHAT_MODES = { "public", "whisper", "mixed" };
+    private static final String[] CHAT_MODE_LABELS = { "Public Chat", "Whisper only", "Both (adv.)" };
+    private static final String[] CHAT_MODE_DESC = {
+            "Bot speaks in global chat",
+            "Bot whispers to you only",
+            "Bot uses both channels",
+    };
+
     private final Screen parent;
     private final BotInfo existingBot; // null = create mode
     private TextFieldWidget nameField;
     private int selectedPersonality = 0;
+    private int selectedChatMode = 0; // index into CHAT_MODES
     private String errorMsg = null;
     private boolean submitting = false;
 
@@ -127,6 +137,14 @@ public class BotConfigScreen extends Screen {
                     break;
                 }
             }
+            // Restore chat mode from existing bot
+            String existingChatMode = existingBot.getChatMode();
+            for (int i = 0; i < CHAT_MODES.length; i++) {
+                if (CHAT_MODES[i].equals(existingChatMode)) {
+                    selectedChatMode = i;
+                    break;
+                }
+            }
         }
         addDrawableChild(nameField);
 
@@ -150,8 +168,18 @@ public class BotConfigScreen extends Screen {
         int sliderColBottom = sliderTop + 5 * (SLIDER_H + SLIDER_GAP);
         int contentBottom = Math.max(personalityColBottom, sliderColBottom);
 
+        // Chat mode cycling button — placed between content and action buttons
+        int chatModeY = Math.min(contentBottom + 8, this.height - 56);
+        addDrawableChild(ButtonWidget.builder(
+                Text.literal("Chat: " + CHAT_MODE_LABELS[selectedChatMode]),
+                button -> {
+                    selectedChatMode = (selectedChatMode + 1) % CHAT_MODES.length;
+                    button.setMessage(Text.literal("Chat: " + CHAT_MODE_LABELS[selectedChatMode]));
+                })
+                .dimensions(centerX - 100, chatModeY, 200, 20).build());
+
         // Clamp button row so it never goes off-screen on tiny windows
-        int bottomY = Math.min(contentBottom + 12, this.height - 30);
+        int bottomY = Math.min(chatModeY + 26, this.height - 30);
 
         addDrawableChild(ButtonWidget.builder(Text.translatable("gui.cancel"), button -> close())
                 .dimensions(centerX - 110, bottomY, 100, 20).build());
@@ -184,6 +212,17 @@ public class BotConfigScreen extends Screen {
         // Name label (left of the field)
         context.drawTextWithShadow(textRenderer, Text.literal("Name:").formatted(Formatting.GRAY),
                 leftColX, NAME_Y + 6, 0xAAAAAA);
+
+        // Character counter — shown to the right of the name field
+        int nameLen = nameField.getText().length();
+        String counter = nameLen + "/16";
+        Formatting counterColor = nameLen >= 16 ? Formatting.RED
+                : (nameLen >= 13 ? Formatting.YELLOW : Formatting.GRAY);
+        int nameFieldX = leftColX + 40;
+        int nameFieldW = (rightColX + COL_WIDTH) - nameFieldX;
+        context.drawTextWithShadow(textRenderer,
+                Text.literal(counter).formatted(counterColor),
+                nameFieldX + nameFieldW + 4, NAME_Y + 6, 0xAAAAAA);
 
         // ── Left column: Personality list ──
         context.drawTextWithShadow(textRenderer, Text.literal("Personality:").formatted(Formatting.GRAY),
@@ -218,11 +257,13 @@ public class BotConfigScreen extends Screen {
         context.drawTextWithShadow(textRenderer, Text.literal("Personality Traits").formatted(Formatting.GRAY),
                 rightColX, COLUMNS_TOP, 0xAAAAAA);
 
-        // Subtle note about custom tuning
-        String note = "(preset-driven)";
-        context.drawTextWithShadow(textRenderer,
-                Text.literal(note).formatted(Formatting.DARK_GRAY),
-                rightColX + COL_WIDTH - textRenderer.getWidth(note), COLUMNS_TOP, 0x666666);
+
+        // Chat mode description — shown below cycling button
+        // We approximate the chat button Y for the description placement.
+        // The description renders just below the cycling button.
+        context.drawCenteredTextWithShadow(textRenderer,
+                Text.literal(CHAT_MODE_DESC[selectedChatMode]).formatted(Formatting.DARK_GRAY),
+                centerX, this.height - 44, 0x888888);
 
         // Error message — just above the button row (if any)
         if (errorMsg != null) {
@@ -265,9 +306,12 @@ public class BotConfigScreen extends Screen {
         submitting = true;
         errorMsg = null;
         String personality = PERSONALITIES[selectedPersonality];
+        String chatMode = CHAT_MODES[selectedChatMode];
 
         if (existingBot != null) {
+            // Update personality, then update chat mode in a chained call
             BrainApiClient.get().updateBot(existingBot.id, name, personality)
+                    .thenCompose(updated -> BrainApiClient.get().updateBotChatMode(updated.id, chatMode))
                     .thenRun(() -> client.execute(() -> client.setScreen(new VoxelMindScreen(null))))
                     .exceptionally(e -> {
                         errorMsg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
@@ -281,8 +325,8 @@ public class BotConfigScreen extends Screen {
                 submitting = false;
                 return;
             }
-            BrainApiClient.get().createBot(name, personality, ownerName)
-                    .thenRun(() -> client.execute(() -> client.setScreen(new VoxelMindScreen(null))))
+            BrainApiClient.get().createBot(name, personality, ownerName, chatMode)
+                    .thenAccept(createdBot -> client.execute(() -> client.setScreen(new BotCapabilitiesScreen(createdBot))))
                     .exceptionally(e -> {
                         errorMsg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
                         submitting = false;

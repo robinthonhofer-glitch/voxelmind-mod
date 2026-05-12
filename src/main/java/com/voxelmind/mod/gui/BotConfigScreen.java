@@ -86,11 +86,6 @@ public class BotConfigScreen extends Screen {
     /** Ordered chat mode values. Index cycles on button click. */
     private static final String[] CHAT_MODES = { "public", "whisper", "mixed" };
     private static final String[] CHAT_MODE_LABELS = { "Public Chat", "Whisper only", "Both (adv.)" };
-    private static final String[] CHAT_MODE_DESC = {
-            "Bot speaks in global chat",
-            "Bot whispers to you only",
-            "Bot uses both channels",
-    };
 
     private final Screen parent;
     private final BotInfo existingBot; // null = create mode
@@ -163,23 +158,24 @@ public class BotConfigScreen extends Screen {
             addDrawableChild(oceanSliders[i]);
         }
 
-        // Cancel / Save buttons — below the taller of the two columns
-        int personalityColBottom = COLUMNS_TOP + 14 + PERSONALITIES.length * PERSONALITY_ROW_H;
+        // Chat mode cycling button — small, in right column directly under the OCEAN sliders.
+        int personalityListBottom = COLUMNS_TOP + 14 + PERSONALITIES.length * PERSONALITY_ROW_H;
+        int blurbBottom = personalityListBottom + 4 + 10; // left column ends here (personality list + blurb)
         int sliderColBottom = sliderTop + 5 * (SLIDER_H + SLIDER_GAP);
-        int contentBottom = Math.max(personalityColBottom, sliderColBottom);
 
-        // Chat mode cycling button — placed between content and action buttons
-        int chatModeY = Math.min(contentBottom + 8, this.height - 56);
+        int chatModeY = sliderColBottom + 6;
+        int chatModeH = 16;
         addDrawableChild(ButtonWidget.builder(
                 Text.literal("Chat: " + CHAT_MODE_LABELS[selectedChatMode]),
                 button -> {
                     selectedChatMode = (selectedChatMode + 1) % CHAT_MODES.length;
                     button.setMessage(Text.literal("Chat: " + CHAT_MODE_LABELS[selectedChatMode]));
                 })
-                .dimensions(centerX - 100, chatModeY, 200, 20).build());
+                .dimensions(rightColX, chatModeY, COL_WIDTH, chatModeH).build());
 
-        // Clamp button row so it never goes off-screen on tiny windows
-        int bottomY = Math.min(chatModeY + 26, this.height - 30);
+        // Cancel/Save buttons — below whichever column ends lower (left blurb vs right chat button)
+        int contentBottom = Math.max(blurbBottom, chatModeY + chatModeH);
+        int bottomY = Math.min(contentBottom + 12, this.height - 30);
 
         addDrawableChild(ButtonWidget.builder(Text.translatable("gui.cancel"), button -> close())
                 .dimensions(centerX - 110, bottomY, 100, 20).build());
@@ -258,18 +254,19 @@ public class BotConfigScreen extends Screen {
                 rightColX, COLUMNS_TOP, 0xAAAAAA);
 
 
-        // Chat mode description — shown below cycling button
-        // We approximate the chat button Y for the description placement.
-        // The description renders just below the cycling button.
-        context.drawCenteredTextWithShadow(textRenderer,
-                Text.literal(CHAT_MODE_DESC[selectedChatMode]).formatted(Formatting.DARK_GRAY),
-                centerX, this.height - 44, 0x888888);
+        // Error message — just above the cancel/save row.
+        // Recompute bottomY using the same formula as init() to keep render in sync.
+        int personalityListBottom2 = COLUMNS_TOP + 14 + PERSONALITIES.length * PERSONALITY_ROW_H;
+        int blurbBottom2 = personalityListBottom2 + 4 + 10;
+        int sliderColBottom2 = (COLUMNS_TOP + 14) + 5 * (SLIDER_H + SLIDER_GAP);
+        int chatModeY2 = sliderColBottom2 + 6;
+        int contentBottom2 = Math.max(blurbBottom2, chatModeY2 + 16);
+        int bottomY2 = Math.min(contentBottom2 + 12, this.height - 30);
 
-        // Error message — just above the button row (if any)
         if (errorMsg != null) {
             context.drawCenteredTextWithShadow(textRenderer,
                     Text.literal(errorMsg).formatted(Formatting.RED),
-                    centerX, this.height - 50, 0xFF5555);
+                    centerX, bottomY2 - 12, 0xFF5555);
         }
     }
 
@@ -300,6 +297,14 @@ public class BotConfigScreen extends Screen {
         }
         if (!name.matches("[a-zA-Z0-9_]+")) {
             errorMsg = "Name: only letters, numbers, and underscores.";
+            return;
+        }
+
+        // Self-collision check: bot can't have the same name as the player —
+        // server would kick the bot with multiplayer.disconnect.name_taken on every spawn.
+        String currentMcName = client.getSession() != null ? client.getSession().getUsername() : null;
+        if (currentMcName != null && name.equalsIgnoreCase(currentMcName)) {
+            errorMsg = "Bot can't share your Minecraft name — you'd kick it on every join.";
             return;
         }
 

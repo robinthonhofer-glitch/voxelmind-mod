@@ -131,6 +131,26 @@ public class SpawnCheckScheduler {
                                 .append(Text.literal("Use a vanilla server or singleplayer world instead.")
                                         .formatted(Formatting.GRAY)),
                         false);
+            } else if ("name_collision".equals(disconnectReason)) {
+                // Bot name conflicts with a connected player (often the user's own MC name)
+                client.player.sendMessage(
+                        Text.literal("").formatted(Formatting.WHITE)
+                                .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
+                                .append(Text.literal("\"" + botName + "\" is already taken on the server.")
+                                        .formatted(Formatting.RED)),
+                        false);
+                client.player.sendMessage(
+                        Text.literal("").formatted(Formatting.WHITE)
+                                .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
+                                .append(Text.literal("If you named the bot after yourself, that's why — the server can't have two of you.")
+                                        .formatted(Formatting.GOLD)),
+                        false);
+                client.player.sendMessage(
+                        Text.literal("").formatted(Formatting.WHITE)
+                                .append(Text.literal("[VoxelMind] ").formatted(Formatting.DARK_GREEN))
+                                .append(Text.literal("Rename the bot in /vm (Edit) to something different and try again.")
+                                        .formatted(Formatting.GRAY)),
+                        false);
             } else {
                 // Generic hint — likely online-mode=true
                 client.player.sendMessage(

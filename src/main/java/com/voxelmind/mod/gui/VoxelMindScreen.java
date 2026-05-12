@@ -617,6 +617,8 @@ public class VoxelMindScreen extends Screen {
             return "Connection dropped — check online-mode=false on the server";
         if (lower.contains("fabric loader") || lower.contains("fabric api") || lower.contains("requires fabric"))
             return "Server requires Fabric Loader/API — bots can't join modded servers. Use a vanilla server.";
+        if (lower.contains("name_taken") || lower.contains("name_collision") || lower.contains("name is already") || lower.contains("name already in use"))
+            return "That name is already taken on the server. If you named the bot after yourself, that's why — rename and try again.";
         if (lower.contains("kick") || lower.contains("whitelist"))
             return "Bot was kicked — check online-mode=false and whitelist";
         if (lower.contains("timeout"))

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.4 (2026-05-12)
+
+### Smarter bots (behind-the-scenes brain upgrades)
+
+- **Your bot stops chasing every mob during follow.** Before: bot saw a zombie 12 blocks away while following you → dropped everything to fight, often dying. Now: while following / escorting you, bots ignore distant mobs and just keep moving with you. They only fight if a mob is actually attacking you or them, or if you ask. Alone or far from you, they still defend themselves as before. Creepers are still avoided in all cases.
+- **Bots eat before they take damage.** Before: bots waited until hunger hit zero and HP started dropping. Now: at food ≤ 10 they eat proactively (during quiet moments — not while following you), at food ≤ 6 they eat immediately. They prefer cooked over raw food (2-3x more nutrition).
+
+### Fix
+
+- **Can't accidentally name your bot after yourself anymore.** Naming a bot the same as your Minecraft username made the server kick it on every spawn ("name already taken"). The mod now blocks that at create-time with a clear error: "Bot can't share your Minecraft name — you'd kick it on every join."
+- **If a name-collision kick still happens, you'll know why.** The mod now recognizes the kick reason and tells you in chat: "If you named the bot after yourself, that's why — rename in /vm Edit." The respawn loop also stops automatically so you don't have to manually despawn.
+
+---
+
 ## 0.3.3 (2026-05-11)
 
 ### New

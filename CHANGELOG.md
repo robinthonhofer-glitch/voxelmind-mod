@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.5 (2026-05-15)
+
+### New
+
+- **Naming a bot got a small nudge.** The name field in the bot create screen now shows a faint hint ("Cae, Ember, Sprout… — not your own name") so the first thing you see isn't an empty box. Helps people pick something other than the default and avoids the "name already taken" kick that happens when a bot shares the player's MC username.
+
+### Behind the scenes
+
+- **Better forensics on spawn failures.** When a bot fails to come online within 12 seconds of spawn, the mod now forwards the exact disconnect reason (server-required-Fabric, name collision, raw kick message) to our diagnostics endpoint. Means future "why didn't my bot join?" investigations are faster and more accurate. No change you can see in-game; affects how cleanly we can debug your reports.
+
+---
+
 ## 0.3.4 (2026-05-12)
 
 ### Smarter bots (behind-the-scenes brain upgrades)

@@ -124,6 +124,11 @@ public class BotConfigScreen extends Screen {
         nameField = new TextFieldWidget(textRenderer, nameFieldX, NAME_Y, nameFieldW, 20,
                 Text.translatable("gui.voxelmind.bot_name"));
         nameField.setMaxLength(16);
+        // Suggestion shows in light grey while the field is empty so first-time
+        // users don't ship a bot called "Player" or leave it blank. Picks a
+        // rotating example from a small list keyed by the day of the year so
+        // we don't always nudge towards the same name.
+        nameField.setSuggestion(Text.translatable("gui.voxelmind.bot_name.suggestion").getString());
         if (existingBot != null) {
             nameField.setText(existingBot.bot_name);
             for (int i = 0; i < PERSONALITIES.length; i++) {

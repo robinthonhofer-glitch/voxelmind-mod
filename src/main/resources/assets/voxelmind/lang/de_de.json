@@ -3,6 +3,7 @@
   "gui.voxelmind.create_bot": "+ Neuer Bot",
   "gui.voxelmind.edit_bot": "Bot bearbeiten",
   "gui.voxelmind.bot_name": "Bot-Name",
+  "gui.voxelmind.bot_name.suggestion": "Cae, Ember, Sprout… (nicht dein eigener Name)",
   "gui.voxelmind.login": "Anmelden",
   "gui.voxelmind.logout": "Abmelden",
   "key.voxelmind.open_gui": "VoxelMind oeffnen",

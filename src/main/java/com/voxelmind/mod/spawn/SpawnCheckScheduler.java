@@ -74,7 +74,7 @@ public class SpawnCheckScheduler {
                             disconnectReason != null ? disconnectReason : "unknown");
 
                     sendHintToPlayer(botName, status, disconnectReason);
-                    sendTelemetry(botId, status);
+                    sendTelemetry(botId, status, disconnectReason);
                 } else {
                     VoxelMindMod.LOGGER.info("SpawnCheck [{}]: bot is online — all good", botName);
                 }
@@ -177,12 +177,24 @@ public class SpawnCheckScheduler {
         });
     }
 
-    private static void sendTelemetry(String botId, String lastStatus) {
+    /**
+     * Telemetry on spawn-check fail.
+     *
+     * Includes disconnectReason if available (since v0.3.5). Before this, the
+     * Mod knew the reason — Brain returns it in /bots/:id/state and the user
+     * sees it in chat — but didn't forward it to telemetry, so our forensics
+     * couldn't distinguish unsupported_server / name_collision / raw kick
+     * reasons. See voxelmind-werkstatt/investigations/REPORT-mauer3-2026-05-15.md.
+     */
+    private static void sendTelemetry(String botId, String lastStatus, String disconnectReason) {
         try {
             JsonObject data = new JsonObject();
             data.addProperty("bot_id", botId);
             data.addProperty("last_status", lastStatus);
             data.addProperty("check_delay_ms", CHECK_DELAY_MS);
+            if (disconnectReason != null) {
+                data.addProperty("disconnect_reason", disconnectReason);
+            }
             data.add("status_snapshot", VmCommand.collectStatusSnapshot());
 
             BrainApiClient.get().sendTelemetry("bot_spawn_check_failed", "warn", data, botId);

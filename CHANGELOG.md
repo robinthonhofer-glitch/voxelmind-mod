@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.6 (2026-05-15)
+
+### Behind the scenes
+
+- **Better forensics when a bot disconnects mid-session.** Before, when the local tunnel-bridge to your Minecraft world dropped, the mod just told the relay "channel closed" and you saw your bot vanish without any explanation. The mod now sends the underlying reason — server kick (`read_eof`), connection reset (`read_error: ...`), local write failure (`write_error: ...`), or explicit close — to diagnostics, so we can tell the difference between a server-side kick and a network glitch.
+
+No gameplay change; this is pure observability for the brain side.
+
+---
+
 ## 0.3.5 (2026-05-15)
 
 ### New

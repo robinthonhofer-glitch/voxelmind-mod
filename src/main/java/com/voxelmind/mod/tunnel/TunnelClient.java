@@ -204,6 +204,25 @@ public class TunnelClient {
     }
 
     /**
+     * Forward the TunnelBridge's close-reason to brain telemetry so we can see
+     * server-kick / connection-reset / write-error cases server-side without
+     * needing the user's local game log.
+     */
+    private void sendBridgeClosedTelemetry(int channelId, String reason) {
+        try {
+            com.google.gson.JsonObject data = new com.google.gson.JsonObject();
+            data.addProperty("bot_id", botId);
+            data.addProperty("channel_id", channelId);
+            data.addProperty("reason", reason);
+            com.voxelmind.mod.api.BrainApiClient.get()
+                .sendTelemetry("tunnel_bridge_closed", "warn", data, botId);
+        } catch (Exception e) {
+            VoxelMindMod.LOGGER.debug("TunnelClient [{}]: tunnel_bridge_closed telemetry failed: {}",
+                    botId, e.getMessage());
+        }
+    }
+
+    /**
      * Tell the relay to destroy the agent-side TCP socket for this channel.
      * Fire-and-forget.
      */
@@ -267,9 +286,14 @@ public class TunnelClient {
                     // When the local TCP side dies (MC kick, connection reset, etc.),
                     // remove the bridge from our routing map AND tell the relay to
                     // tear down the agent-side connection — otherwise the agent
-                    // spams keepalives into a zombie bridge.
-                    b.setOnClose(() -> {
+                    // spams keepalives into a zombie bridge. The reason string
+                    // (read_eof / read_error:* / write_error:* / external_close)
+                    // is forwarded to brain telemetry so post-mortems can tell
+                    // the difference between "server kicked the bot" and
+                    // "the user closed their world".
+                    b.setOnClose(reason -> {
                         bridges.remove(ch, b);
+                        sendBridgeClosedTelemetry(ch, reason);
                         sendCloseChannel(ch);
                     });
 

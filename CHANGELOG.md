@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.7 (2026-05-16)
+
+### New
+
+- **You decide whether your bot is allowed to hit people.** Two new toggles in the bot create/edit screen: "PVP (attack players)" — off by default, so your bot will refuse to attack any player on command — and "Attack owner", which is locked off until PVP is on and pops a confirmation dialog before turning on (so a misclick can't end with your bot beating you to death). Existing bots stay non-PVP until you flip the toggle.
+
+---
+
 ## 0.3.6 (2026-05-15)
 
 ### Behind the scenes

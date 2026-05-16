@@ -8,6 +8,9 @@ public class BotInfo {
     public String owner_player_name;
     /** Chat channel policy: "public", "whisper", or "mixed". Default "public". */
     public String chat_mode;
+    /** PVP toggles (NEW-1). Both default to false server-side. */
+    public boolean allow_pvp;
+    public boolean allow_attack_owner;
 
     public boolean isOnline() {
         return "online".equals(status) || "spawning".equals(status);

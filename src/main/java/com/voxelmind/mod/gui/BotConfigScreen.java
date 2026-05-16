@@ -3,6 +3,7 @@ package com.voxelmind.mod.gui;
 import com.voxelmind.mod.api.BrainApiClient;
 import com.voxelmind.mod.api.dto.BotInfo;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.ConfirmScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.SliderWidget;
@@ -92,6 +93,11 @@ public class BotConfigScreen extends Screen {
     private TextFieldWidget nameField;
     private int selectedPersonality = 0;
     private int selectedChatMode = 0; // index into CHAT_MODES
+    // PVP toggles (NEW-1). Both default to false; attackOwner can only be true while pvp is true.
+    private boolean allowPvp = false;
+    private boolean allowAttackOwner = false;
+    private ButtonWidget pvpButton;
+    private ButtonWidget attackOwnerButton;
     private String errorMsg = null;
     private boolean submitting = false;
 
@@ -145,6 +151,9 @@ public class BotConfigScreen extends Screen {
                     break;
                 }
             }
+            // Restore PVP toggles
+            allowPvp = existingBot.allow_pvp;
+            allowAttackOwner = existingBot.allow_attack_owner && allowPvp;
         }
         addDrawableChild(nameField);
 
@@ -178,8 +187,49 @@ public class BotConfigScreen extends Screen {
                 })
                 .dimensions(rightColX, chatModeY, COL_WIDTH, chatModeH).build());
 
-        // Cancel/Save buttons — below whichever column ends lower (left blurb vs right chat button)
-        int contentBottom = Math.max(blurbBottom, chatModeY + chatModeH);
+        // PVP toggle row — clicking flips allowPvp. When PVP turns off we force
+        // attackOwner off too so the UI matches the server-side guard.
+        int pvpY = chatModeY + chatModeH + 2;
+        pvpButton = ButtonWidget.builder(
+                Text.literal(pvpLabel()),
+                button -> {
+                    allowPvp = !allowPvp;
+                    if (!allowPvp) allowAttackOwner = false;
+                    refreshPvpButtons();
+                })
+                .dimensions(rightColX, pvpY, COL_WIDTH, chatModeH).build();
+        addDrawableChild(pvpButton);
+
+        // Attack-owner toggle. Disabled when PVP is off (no point). Going from
+        // OFF→ON pops a vanilla ConfirmScreen so a misclick can't end with the
+        // bot beating the player to death on the next aggro.
+        int attackOwnerY = pvpY + chatModeH + 2;
+        attackOwnerButton = ButtonWidget.builder(
+                Text.literal(attackOwnerLabel()),
+                button -> {
+                    if (!allowPvp) return; // disabled state — no-op
+                    if (allowAttackOwner) {
+                        allowAttackOwner = false;
+                        refreshPvpButtons();
+                    } else {
+                        client.setScreen(new ConfirmScreen(
+                                confirmed -> {
+                                    if (confirmed) {
+                                        allowAttackOwner = true;
+                                    }
+                                    refreshPvpButtons();
+                                    client.setScreen(this);
+                                },
+                                Text.literal("Allow your bot to attack you?"),
+                                Text.literal("With this on, your bot may kill you. Are you sure?")));
+                    }
+                })
+                .dimensions(rightColX, attackOwnerY, COL_WIDTH, chatModeH).build();
+        attackOwnerButton.active = allowPvp;
+        addDrawableChild(attackOwnerButton);
+
+        // Cancel/Save buttons — below whichever column ends lower (left blurb vs right toggle stack)
+        int contentBottom = Math.max(blurbBottom, attackOwnerY + chatModeH);
         int bottomY = Math.min(contentBottom + 12, this.height - 30);
 
         addDrawableChild(ButtonWidget.builder(Text.translatable("gui.cancel"), button -> close())
@@ -188,6 +238,23 @@ public class BotConfigScreen extends Screen {
         String actionLabel = existingBot != null ? "Save" : "Create";
         addDrawableChild(ButtonWidget.builder(Text.literal(actionLabel), button -> submit())
                 .dimensions(centerX + 10, bottomY, 100, 20).build());
+    }
+
+    private String pvpLabel() {
+        return "PVP (attack players): " + (allowPvp ? "ON" : "OFF");
+    }
+
+    private String attackOwnerLabel() {
+        if (!allowPvp) return "Attack owner: --";
+        return "Attack owner: " + (allowAttackOwner ? "ON" : "OFF");
+    }
+
+    private void refreshPvpButtons() {
+        if (pvpButton != null) pvpButton.setMessage(Text.literal(pvpLabel()));
+        if (attackOwnerButton != null) {
+            attackOwnerButton.setMessage(Text.literal(attackOwnerLabel()));
+            attackOwnerButton.active = allowPvp;
+        }
     }
 
     private void applyPresetToValues(int idx) {
@@ -265,7 +332,9 @@ public class BotConfigScreen extends Screen {
         int blurbBottom2 = personalityListBottom2 + 4 + 10;
         int sliderColBottom2 = (COLUMNS_TOP + 14) + 5 * (SLIDER_H + SLIDER_GAP);
         int chatModeY2 = sliderColBottom2 + 6;
-        int contentBottom2 = Math.max(blurbBottom2, chatModeY2 + 16);
+        int pvpY2 = chatModeY2 + 16 + 2;
+        int attackOwnerY2 = pvpY2 + 16 + 2;
+        int contentBottom2 = Math.max(blurbBottom2, attackOwnerY2 + 16);
         int bottomY2 = Math.min(contentBottom2 + 12, this.height - 30);
 
         if (errorMsg != null) {
@@ -319,9 +388,10 @@ public class BotConfigScreen extends Screen {
         String chatMode = CHAT_MODES[selectedChatMode];
 
         if (existingBot != null) {
-            // Update personality, then update chat mode in a chained call
+            // Chain: personality → chat-mode → pvp toggles → close.
             BrainApiClient.get().updateBot(existingBot.id, name, personality)
                     .thenCompose(updated -> BrainApiClient.get().updateBotChatMode(updated.id, chatMode))
+                    .thenCompose(updated -> BrainApiClient.get().updateBotPvp(updated.id, allowPvp, allowAttackOwner))
                     .thenRun(() -> client.execute(() -> client.setScreen(new VoxelMindScreen(null))))
                     .exceptionally(e -> {
                         errorMsg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
@@ -335,7 +405,7 @@ public class BotConfigScreen extends Screen {
                 submitting = false;
                 return;
             }
-            BrainApiClient.get().createBot(name, personality, ownerName, chatMode)
+            BrainApiClient.get().createBot(name, personality, ownerName, chatMode, allowPvp, allowAttackOwner)
                     .thenAccept(createdBot -> client.execute(() -> client.setScreen(new BotCapabilitiesScreen(createdBot))))
                     .exceptionally(e -> {
                         errorMsg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();

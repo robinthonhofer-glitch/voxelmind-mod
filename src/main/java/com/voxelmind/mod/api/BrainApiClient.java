@@ -51,12 +51,23 @@ public class BrainApiClient {
      * @param chatMode one of "public", "whisper", "mixed"
      */
     public CompletableFuture<BotInfo> createBot(String name, String personalityId, String ownerPlayerName, String chatMode) {
-        var map = new java.util.HashMap<String, String>();
-        map.put("bot_name", name);
-        map.put("personality_id", personalityId);
-        map.put("owner_player_name", ownerPlayerName);
-        map.put("chat_mode", chatMode);
-        return sendAsync("POST", "/bots", GSON.toJson(map))
+        return createBot(name, personalityId, ownerPlayerName, chatMode, false, false);
+    }
+
+    /**
+     * Creates a bot with an explicit chat mode and PVP toggles.
+     * allowAttackOwner is only honored by the server if allowPvp is also true.
+     */
+    public CompletableFuture<BotInfo> createBot(String name, String personalityId, String ownerPlayerName,
+                                                String chatMode, boolean allowPvp, boolean allowAttackOwner) {
+        var payload = new com.google.gson.JsonObject();
+        payload.addProperty("bot_name", name);
+        payload.addProperty("personality_id", personalityId);
+        payload.addProperty("owner_player_name", ownerPlayerName);
+        payload.addProperty("chat_mode", chatMode);
+        payload.addProperty("allow_pvp", allowPvp);
+        payload.addProperty("allow_attack_owner", allowPvp && allowAttackOwner);
+        return sendAsync("POST", "/bots", payload.toString())
                 .thenApply(body -> GSON.fromJson(body, BotInfo.class));
     }
 
@@ -81,6 +92,19 @@ public class BrainApiClient {
         var map = new java.util.HashMap<String, String>();
         map.put("chat_mode", chatMode);
         return sendAsync("PATCH", "/bots/" + botId, GSON.toJson(map))
+                .thenApply(body -> GSON.fromJson(body, BotInfo.class));
+    }
+
+    /**
+     * Updates both PVP toggles in a single PATCH. The brain rejects
+     * allow_attack_owner=true without allow_pvp=true, so we mirror that
+     * client-side to avoid a friendly-fire 400 round-trip.
+     */
+    public CompletableFuture<BotInfo> updateBotPvp(String botId, boolean allowPvp, boolean allowAttackOwner) {
+        var payload = new com.google.gson.JsonObject();
+        payload.addProperty("allow_pvp", allowPvp);
+        payload.addProperty("allow_attack_owner", allowPvp && allowAttackOwner);
+        return sendAsync("PATCH", "/bots/" + botId, payload.toString())
                 .thenApply(body -> GSON.fromJson(body, BotInfo.class));
     }
 
